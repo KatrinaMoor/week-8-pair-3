@@ -1,5 +1,6 @@
 package com.techelevator.tenmo.dao;
 
+import com.techelevator.tenmo.model.Transfer;
 import com.techelevator.tenmo.model.User;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
@@ -17,7 +18,8 @@ public class UserSqlDAO implements UserDAO {
 
     private static final double STARTING_BALANCE = 1000;
     private JdbcTemplate jdbcTemplate;
-
+    private TransferDAO transferDao;
+    
     public UserSqlDAO(JdbcTemplate jdbcTemplate) {
         this.jdbcTemplate = jdbcTemplate;
     }
@@ -30,7 +32,13 @@ public class UserSqlDAO implements UserDAO {
     @Override
     public List<User> findAll() {
         List<User> users = new ArrayList<>();
-        String sql = "select * from users";
+        String sql = "SELECT u.user_id "
+    				+ ", u.username "
+    				+ ", u.password_hash "
+    				+ ", a.balance "
+        			+ "FROM users AS u "
+        			+ "JOIN accounts AS a "
+        			+ "	ON u.user_id = a.user_id;";
 
         SqlRowSet results = jdbcTemplate.queryForRowSet(sql);
         while(results.next()) {
@@ -49,6 +57,38 @@ public class UserSqlDAO implements UserDAO {
             }
         }
         throw new UsernameNotFoundException("User " + username + " was not found.");
+    }
+
+    @Override
+    public User findByUserId(int id) throws UsernameNotFoundException {
+        for (User user : this.findAll()) {
+            if( user.getId() == id) {
+                return user;
+            }
+        }
+        throw new UsernameNotFoundException("User ID " + id + " was not found.");
+    }
+
+    @Override
+    public User getUserByAccount(int id)
+    {
+    	User user = null;
+    	
+    	String sql = "SELECT u.user_id "
+    			+ "FROM users AS u " 
+    			+ "JOIN accounts AS a " 
+    			+ "    ON u.user_id = a.user_id " 
+    			+ "WHERE a.account_id = ?;";
+    	
+		SqlRowSet row = jdbcTemplate.queryForRowSet(sql, id);
+
+		if(row.next())
+		{
+			int userId = row.getInt("user_id");
+			user = findByUserId(userId);
+		}
+		
+		return user;
     }
 
     @Override
@@ -78,6 +118,56 @@ public class UserSqlDAO implements UserDAO {
         return userCreated && accountCreated;
     }
 
+    public List<Transfer> getTransfersByUser(int userId)
+    {
+    	List<Transfer> transfers = new ArrayList<Transfer>();
+    	int accountId = getAccountByUserId(userId);
+    	
+    	String sql = "SELECT t.transfer_id "
+				+ "		, t.account_from "
+				+ "		, t.account_to "
+				+ "		, tt.transfer_type_desc AS type "
+				+ "		, ts.transfer_status_desc AS status "
+				+ "		, t.amount "
+				+ "FROM transfers AS t "
+				+ "JOIN transfer_types AS tt "
+				+ "		ON t.transfer_type_id = tt.transfer_type_id "
+				+ "JOIN transfer_statuses AS ts "
+				+ "		ON t.transfer_status_id = ts.transfer_status_id "
+				+ "WHERE t.account_from = ? "
+				+ "	OR t.account_to = ?; ";
+
+    	SqlRowSet row = jdbcTemplate.queryForRowSet(sql, accountId, accountId);
+    	
+        while(row.next()) {
+            Transfer transfer = transferDao.get(row.getInt("transfer_id"));
+            transfers.add(transfer);
+        }
+    	
+    	return transfers;
+    }
+    
+    @Override
+    public int getAccountByUserId(int id)
+    {
+    	int accountId = -1;
+    	
+    	String sql = "SELECT a.account_id "
+    			+ "FROM accounts AS a " 
+    			+ "JOIN users AS u " 
+    			+ "    ON a.user_id = u.user_id " 
+    			+ "WHERE u.user_id = ?;";
+    	
+		SqlRowSet row = jdbcTemplate.queryForRowSet(sql, id);
+
+		if(row.next())
+		{
+			accountId = row.getInt("account_id");
+		}
+		
+		return accountId;
+    }
+    
     private User mapRowToUser(SqlRowSet rs) {
         User user = new User();
         user.setId(rs.getLong("user_id"));
@@ -85,6 +175,7 @@ public class UserSqlDAO implements UserDAO {
         user.setPassword(rs.getString("password_hash"));
         user.setActivated(true);
         user.setAuthorities("ROLE_USER");
+        user.setBalance(rs.getBigDecimal("balance"));
         return user;
     }
 }
