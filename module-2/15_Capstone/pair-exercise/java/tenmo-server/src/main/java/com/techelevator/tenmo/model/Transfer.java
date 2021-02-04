@@ -7,8 +7,8 @@ public class Transfer
 	private int id;
 	private String transferType;
 	private String transferStatus;
-	private User userFrom;
-	private User userTo;
+	private String userFrom;
+	private String userTo;
 	private BigDecimal amount;
 	
 	
@@ -42,22 +42,22 @@ public class Transfer
 		this.transferStatus = transferStatus;
 	}
 	
-	public User getUserFrom()
+	public String getUserFrom()
 	{
 		return userFrom;
 	}
 	
-	public void setUserFrom(User userFrom)
+	public void setUserFrom(String userFrom)
 	{
 		this.userFrom = userFrom;
 	}
 	
-	public User getUserTo()
+	public String getUserTo()
 	{
 		return userTo;
 	}
 	
-	public void setUserTo(User userTo)
+	public void setUserTo(String userTo)
 	{
 		this.userTo = userTo;
 	}
