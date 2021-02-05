@@ -8,7 +8,7 @@ import java.util.Set;
 public class User
 {
 
-	private Long id;
+	private int id;
 	private String username;
 	private String password;
 	private boolean activated;
@@ -19,7 +19,7 @@ public class User
 	{
 	}
 
-	public User(Long id, String username, String password, String authorities)
+	public User(int id, String username, String password, String authorities)
 	{
 		this.id = id;
 		this.username = username;
@@ -27,12 +27,12 @@ public class User
 		this.activated = true;
 	}
 
-	public Long getId()
+	public int getId()
 	{
 		return id;
 	}
 
-	public void setId(Long id)
+	public void setId(int id)
 	{
 		this.id = id;
 	}

@@ -1,0 +1,11 @@
+TEnmo endpoints
+
+GET:
+/users						returns List<User> of all registered users
+/users/balance/{id}			returns BigDecimal value of account balance for user {id}
+/users/transfers/{id}		returns List<Transfer> of all transfers involving user {id}
+
+/transfers/{id}				returns Transfer object by {id}
+
+POST:
+/transfers					passes Transfer object, creates new transfer
