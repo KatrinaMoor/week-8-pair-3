@@ -5,7 +5,6 @@ import java.math.BigDecimal;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.rowset.SqlRowSet;
-import org.springframework.security.core.userdetails.MapReactiveUserDetailsService;
 import org.springframework.stereotype.Component;
 
 import com.techelevator.tenmo.model.Transfer;
@@ -16,16 +15,16 @@ public class TransferDAO
 {
 	@Autowired
 	private JdbcTemplate jdbcTemplate;
-	
-	private UserDAO userDao;
+	@Autowired
+	private UserSqlDAO userDao;
 	
 	public Transfer get(int id)
 	{
-		Transfer transfer = null;
+		Transfer transfer = new Transfer();
 		int accountFrom;
 		int accountTo;
-		User userFrom = null;
-		User userTo = null;
+		User userFrom = new User();
+		User userTo = new User();
 		
 		String sql = "SELECT t.transfer_id "
 					+ "		, t.account_from "
@@ -57,46 +56,76 @@ public class TransferDAO
 	
 	public Transfer create(Transfer transfer)
 	{
-		int transferId = getNextId();
 		int userFrom = userDao.findIdByUsername(transfer.getUserFrom());
 		int userTo = userDao.findIdByUsername(transfer.getUserTo());
 		int accountFrom = userDao.getAccountByUserId(userFrom);
 		int accountTo = userDao.getAccountByUserId(userTo);
-		int transferType = getStatusOrTypeId("type", transfer.getTransferType());
-		int transferStatus = getStatusOrTypeId("status", transfer.getTransferStatus());
+		int transferType = getTypeId(transfer.getTransferType());
+		int transferStatus = getStatusId(transfer.getTransferStatus());
 		BigDecimal amount = transfer.getAmount();
+		BigDecimal startBalanceFrom = userDao.getBalanceById(userFrom);
+		BigDecimal startBalanceTo = userDao.getBalanceById(userTo);
+		Transfer newTransfer = null;
 		
-		String sql = "INSERT INTO transfers "
-					+ "(transfer_id"
-					+ ", transfer_type_id"
-					+ ", transfer_status_id"
-					+ ", account_from"
-					+ ", account_to"
-					+ ", amount) "
-					+ "VALUES "
-					+ "(?, ?, ?, ?, ?, ?);";
-		
-		jdbcTemplate.update(sql, transferId, transferType, transferStatus,
-								accountFrom, accountTo, amount);
-		
-		Transfer newTransfer = get(transferId);
-		
+		if(startBalanceFrom.compareTo(amount) >= 0)
+		{
+			int transferId = getNextId();
+			String sql = "INSERT INTO transfers "
+						+ "(transfer_id"
+						+ ", transfer_type_id"
+						+ ", transfer_status_id"
+						+ ", account_from"
+						+ ", account_to"
+						+ ", amount) "
+						+ "VALUES "
+						+ "(?, ?, ?, ?, ?, ?);";
+			
+			jdbcTemplate.update(sql, transferId, transferType, transferStatus,
+									accountFrom, accountTo, amount);
+			
+			userDao.updateBalance(userFrom, startBalanceFrom.subtract(amount));
+			userDao.updateBalance(userTo, startBalanceTo.add(amount));
+			
+			newTransfer = get(transferId);
+		}
+//		else
+//		{
+//			TODO: handle insufficient funds error
+//		}
 		return newTransfer;
 	}
 	
-	private int getStatusOrTypeId(String statusOrType, String description)
+	private int getStatusId(String status)
 	{
 		int id = -1;
 		
-		String sql = "SELECT transfer_" + statusOrType + "_id "
-					+ "FROM transfer_" + statusOrType + " "
-					+ "WHERE transfer_" + statusOrType + "_desc = ?;";
+		String sql = "SELECT transfer_status_id "
+					+ "FROM transfer_statuses "
+					+ "WHERE transfer_status_desc = ?;";
 		
-		SqlRowSet row = jdbcTemplate.queryForRowSet(sql, description);
+		SqlRowSet row = jdbcTemplate.queryForRowSet(sql, status);
 		
 		if(row.next())
 		{
-			id = row.getInt("transfer_" + statusOrType + "_id");
+			id = row.getInt("transfer_status_id");
+		}
+		
+		return id;
+	}
+	
+	private int getTypeId(String type)
+	{
+		int id = -1;
+		
+		String sql = "SELECT transfer_type_id "
+					+ "FROM transfer_types "
+					+ "WHERE transfer_type_desc = ?;";
+		
+		SqlRowSet row = jdbcTemplate.queryForRowSet(sql, type);
+		
+		if(row.next())
+		{
+			id = row.getInt("transfer_type_id");
 		}
 		
 		return id;
@@ -117,9 +146,9 @@ public class TransferDAO
 	}
 	
 	private int getNextId() {
-		SqlRowSet nextIdResult = jdbcTemplate.queryForRowSet("SELECT nextval('seq_transfer_id AS nextId')");
+		SqlRowSet nextIdResult = jdbcTemplate.queryForRowSet("SELECT nextval('seq_transfer_id') AS next_id");
 		if(nextIdResult.next()) {
-			return nextIdResult.getInt("nextId");
+			return nextIdResult.getInt("next_id");
 		} else {
 			throw new RuntimeException("Something went wrong while getting an id for the new transfer");
 		}

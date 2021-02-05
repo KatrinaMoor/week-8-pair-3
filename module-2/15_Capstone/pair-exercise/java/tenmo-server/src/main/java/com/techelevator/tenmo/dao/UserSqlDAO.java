@@ -2,6 +2,8 @@ package com.techelevator.tenmo.dao;
 
 import com.techelevator.tenmo.model.Transfer;
 import com.techelevator.tenmo.model.User;
+
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.jdbc.support.rowset.SqlRowSet;
@@ -9,6 +11,7 @@ import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Component;
 
+import java.math.BigDecimal;
 import java.sql.PreparedStatement;
 import java.util.ArrayList;
 import java.util.List;
@@ -17,16 +20,29 @@ import java.util.List;
 public class UserSqlDAO implements UserDAO {
 
     private static final double STARTING_BALANCE = 1000;
+    
+    @Autowired
     private JdbcTemplate jdbcTemplate;
+    
+    @Autowired
     private TransferDAO transferDao;
     
-    public UserSqlDAO(JdbcTemplate jdbcTemplate) {
-        this.jdbcTemplate = jdbcTemplate;
-    }
+//    public UserSqlDAO(JdbcTemplate jdbcTemplate) {
+//        this.jdbcTemplate = jdbcTemplate;
+//    }
 
     @Override
     public int findIdByUsername(String username) {
-        return jdbcTemplate.queryForObject("select user_id from users where username = ?", int.class, username);
+        int id = -1;
+    	String sql = "SELECT user_id "
+        			+ "FROM users "
+        			+ "WHERE username = ?;";
+    	SqlRowSet row = jdbcTemplate.queryForRowSet(sql, username);
+    	if(row.next())
+    	{
+    		id = row.getInt("user_id");
+    	}
+    	return id;
     }
 
     @Override
@@ -60,19 +76,31 @@ public class UserSqlDAO implements UserDAO {
     }
 
     @Override
-    public User findByUserId(int id) throws UsernameNotFoundException {
-        for (User user : this.findAll()) {
-            if( user.getId() == id) {
-                return user;
-            }
-        }
+    public User findByUserId(int id) throws UsernameNotFoundException
+    {
+    	String sql = "SELECT u.user_id "
+				+ ", u.username "
+				+ ", u.password_hash "
+				+ ", a.balance "
+    			+ "FROM users AS u "
+    			+ "JOIN accounts AS a "
+    			+ "	ON u.user_id = a.user_id "
+    			+ "WHERE u.user_id = ?;";
+
+		SqlRowSet row = jdbcTemplate.queryForRowSet(sql, id);
+		
+		if (row.next())
+		{
+			User user = mapRowToUser(row);
+			return user;
+		}
         throw new UsernameNotFoundException("User ID " + id + " was not found.");
     }
 
     @Override
     public User getUserByAccount(int id)
     {
-    	User user = null;
+    	User user = new User();
     	
     	String sql = "SELECT u.user_id "
     			+ "FROM users AS u " 
@@ -118,6 +146,7 @@ public class UserSqlDAO implements UserDAO {
         return userCreated && accountCreated;
     }
 
+    @Override
     public List<Transfer> getTransfersByUser(int userId)
     {
     	List<Transfer> transfers = new ArrayList<Transfer>();
@@ -148,15 +177,49 @@ public class UserSqlDAO implements UserDAO {
     }
     
     @Override
+    public BigDecimal updateBalance(int userId, BigDecimal balance)
+    {
+    	int accountId = getAccountByUserId(userId);
+    	
+    	String sql = "UPDATE accounts "
+    				+ "SET balance = ? "
+    				+ "WHERE account_id = ?;";
+    	jdbcTemplate.update(sql, balance, accountId);
+    	
+    	User user = findByUserId(userId);
+    	
+    	return user.getBalance();
+    }
+    
+    @Override
+    public BigDecimal getBalanceById(int userId)
+    {
+    	int accountId = getAccountByUserId(userId);
+    	BigDecimal balance = BigDecimal.valueOf(0);
+    	
+    	String sql = "SELECT balance "
+    				+ "FROM accounts "
+    				+ "WHERE account_id = ?;";
+    	SqlRowSet row = jdbcTemplate.queryForRowSet(sql, accountId);
+    	
+    	if(row.next())
+    	{
+    		balance = row.getBigDecimal("balance");
+    	}
+    	
+    	return balance;
+    }
+    
+    @Override
     public int getAccountByUserId(int id)
     {
     	int accountId = -1;
     	
     	String sql = "SELECT a.account_id "
-    			+ "FROM accounts AS a " 
-    			+ "JOIN users AS u " 
-    			+ "    ON a.user_id = u.user_id " 
-    			+ "WHERE u.user_id = ?;";
+    				+ "FROM accounts AS a " 
+    				+ "JOIN users AS u " 
+    				+ "    ON a.user_id = u.user_id " 
+    				+ "WHERE u.user_id = ?;";
     	
 		SqlRowSet row = jdbcTemplate.queryForRowSet(sql, id);
 
@@ -170,7 +233,7 @@ public class UserSqlDAO implements UserDAO {
     
     private User mapRowToUser(SqlRowSet rs) {
         User user = new User();
-        user.setId(rs.getLong("user_id"));
+        user.setId(rs.getInt("user_id"));
         user.setUsername(rs.getString("username"));
         user.setPassword(rs.getString("password_hash"));
         user.setActivated(true);
